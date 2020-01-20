@@ -90,14 +90,10 @@ class NMCommand(object):
                     if arg not in kwargs:
                         opts.append(arg)
                     else:
-                        opts.append("%s %s" % (
-                                arg,
-                                sanitize_args(kwargs[arg])))
-                cmd = "%s %s" % (command,
-                                 ' '.join(opts))
+                        opts.append("%s %s" % (arg, sanitize_args(kwargs[arg])))
+                cmd = "%s %s" % (command, ' '.join(opts))
 
-            return nmcli(self.cmdname,
-                         command=cmd)
+            return nmcli(self.cmdname, command=cmd)
 
         return run_action
 
@@ -113,6 +109,7 @@ nm = NMCommand(
          ("wifi", ["on", "off"]),
          ("wwan", ["on", "off"])]
         )
+
 
 con = NMCommand(
     "con",
@@ -134,18 +131,18 @@ dev = NMCommand(
 
 
 if __name__ == '__main__':
-    print nm.status()
-    print nm.enable(True)
-    print nm.enable(False)
+    print(nm.status())
+    print(nm.enable(True))
+    print(nm.enable(False))
 
     try:
-        print con.list(food=8302)
-        print "BAD!"
+        print(con.list(food=8302))
+        print("BAD!")
     except:
         pass
 
     try:
-        print nm.enable("asdasd")
-        print "BAD!"
+        print(nm.enable("asdasd"))
+        print("BAD!")
     except:
         pass
