@@ -22,7 +22,7 @@ description:
 '''
 
 # nmcli device wifi connect {SSID} password {password}
-class NetworkManagerCLI(ROOT):
+class NetworkManagerCLI(object):
     """
 
     """
@@ -329,7 +329,6 @@ EXAMPLES
        nmcli con export corp-vpnc /home/joe/corpvpn.conf
            Exports NetworkManager VPN profile corp-vpnc as standard Cisco (vpnc) configuration.
     """
-
     connections = ConnectionManager()
     devices = DeviceManager()
     general = GeneralCommand()
@@ -343,8 +342,6 @@ EXAMPLES
     def help(self) -> str:
         return ''
 
-    def __init__(self):
-        pass
 
 nmcli = NetworkManagerCLI()
 

@@ -6,7 +6,7 @@ from .constants import NMCLI_FIELDS
 
 
 
-___all__ = ['ROOT', 'error_codes', 'Exit_Status', 'Result']
+___all__ = ['ROOT', 'error_codes', 'Exit_Status', 'Result', 'Parser']
 
 
 
@@ -444,6 +444,27 @@ class NetWorkManagerException(Exception):
 
 
 
+class Parser(object):
+    def __init__(self, *, column_names: list = None, levels: list = None, descriptions: dict = None, action: callable = None):
+        self.levels = levels
+        self.column_names = column_names
+        self.descriptions = descriptions
+        self.action = action
+
+    def __call__(self, stdout: str, stderr: str, *args, **kwargs) -> dict:
+        stdout = stdout.strip()
+
+        if callable(self.action):
+            if self.column_names is not None:
+                return self.action(stdout, headers=self.column_names)
+            else:
+                return self.action(stdout)
+
+        if self.descriptions is not None:
+            if stdout in self.descriptions:
+                return { stdout: self.descriptions[stdout] }
+
+
 
 
 class ROOT(object):
@@ -489,7 +510,7 @@ class ROOT(object):
 
         return retcode, stdout.decode(), stderr.decode()
 
-    def _execute_nmcli(self, obj, command=None, fields=None, multiline=False) -> Result:
+    def _execute_nmcli(self, obj, command=None, fields=None, multiline=False, parser: Parser = None) -> Result:
         """  Wraps nmcli execution  """
         if fields is None:
             fields = NMCLI_FIELDS[obj]
@@ -510,28 +531,32 @@ class ROOT(object):
         retcode, stdout, stderr = self.Shell(args)
         data = []
         if error_codes.IsOk(retcode):
-            if multiline:
-                row = { }
-                for line in stdout.split('\n'):
-                    values = line.split(':', 1)
-                    if len(values) == 2:
-                        multikey, value = values
-                        field, prop = multikey.split('.')
-                        row[prop] = value
-                data.append(row)
+            if parser is not None:
+                data = parser(stdout, stderr)
+
             else:
-                for line in stdout.split('\n'):
-                    values = self._splitter.split(line)
-                    if len(values) == len(fields):
-                        row = dict(zip(fields, values))
-                        data.append(row)
+                if multiline:
+                    row = { }
+                    for line in stdout.split('\n'):
+                        values = line.split(':', 1)
+                        if len(values) == 2:
+                            multikey, value = values
+                            field, prop = multikey.split('.')
+                            row[prop] = value
+                    data.append(row)
+                else:
+                    for line in stdout.split('\n'):
+                        values = self._splitter.split(line)
+                        if len(values) == len(fields):
+                            row = dict(zip(fields, values))
+                            data.append(row)
 
             return Result(data, retcode, stdout, stderr)
         else:
             msg = f"nmcli return {retcode} code. STDERR='{stderr}'"
             raise NetWorkManagerException(msg, data={'stderr': stderr, 'retcode': retcode, 'stdout': stdout})
 
-    def _run_action(self, command, *args, **kwargs) -> Result:
+    def _run_action(self, command, *args, parser: Parser = None, **kwargs) -> Result:
         cmd_args = [self._sanitize_args(arg) for arg in args]
         if kwargs:
             cmd_args.extend(kwargs.keys())
@@ -547,7 +572,7 @@ class ROOT(object):
                     opts.append(f"{arg} {self._sanitize_args(kwargs[arg])}")
             cmd = f"{command} {' '.join(opts)}"
 
-        return self._execute_nmcli(self.__root__, command=cmd)
+        return self._execute_nmcli(self.__root__, command=cmd, parser=parser)
 
 
     # def gen_action(self, command, possibleargs):

@@ -4,7 +4,8 @@ from .constants import NMCLI_FIELDS
 
 
 class Result(object):
-    data = None
+    data: dict
+    __slots__ = ['return_code', 'stdout', 'stderr', 'data', ]
     def __init__(self, data: list or dict, ret_code: int, stdout: str, stderr: str):
         self.return_code = ret_code
         self.stdout = stdout
@@ -31,6 +32,13 @@ class Result(object):
 
     def __contains__(self, *args):
         print(args)
+        if len(args) == 1:
+            return args[0] in self.data
 
     def __getitem__(self, *args):
         print(args)
+        if len(args) == 1:
+            if args[0] in self.data:
+                return self.data[args[0]]
+
+

@@ -1,14 +1,11 @@
-
-from .base import ROOT
+from .base import *
 from .results import Result
+from .standard_parsers import *
+
+
 
 
 ___all__ = ['DeviceCommand']
-
-
-
-
-
 
 class _DevStatusCommand(ROOT):
     """
@@ -18,7 +15,36 @@ class _DevStatusCommand(ROOT):
            This is the default action if no command is specified to nmcli device.
     """
     __cmd__ = 'status'
+
+    @staticmethod
+    def _parser(stdout: str, headers: list or tuple) -> dict:
+        l = []
+        for row in stdout.strip().split('\n'):
+            if any(header in row for header in headers): continue
+            l.append(row.split())
+
+        d = { }
+        for row in l:
+            print(row)
+            DEVICE, TYPE, STATE, *CONNECTION = row
+            d[DEVICE] = {
+                    'TYPE':       TYPE,
+                    'STATE':      STATE,
+                    'CONNECTION': ' '.join(CONNECTION),
+                    }
+        return d
+
+    _status_parser = Parser(action=_parser, column_names=['DEVICE', 'TYPE', 'STATE', 'CONNECTION'])
     def __call__(self) -> Result:
+        """
+            nmcli device status
+                DEVICE  TYPE      STATE      CONNECTION
+                eth0    ethernet  connected  Wired connection 1
+                wlan0   wifi      connected  Steggi
+                lo      loopback  unmanaged  --
+
+        :return:
+        """
         return self._run_action(self.__base_command__, self.__cmd__)
 
 class _DevShowCommand(ROOT):
@@ -27,12 +53,137 @@ class _DevShowCommand(ROOT):
            Show detailed information about devices. Without an argument, all devices are examined. To get information for a specific device, the interface name has to be provided.
     """
     __cmd__ = 'show'
-    class sub_cmd(object):
-        ifname = 'ifname'
-    def __call__(self, ifname: str = None) -> Result:
-        kwargs = {}
-        if ifname is not None: kwargs[self.sub_cmd.ifname] = ifname
-        return self._run_action(self.__base_command__, self.__cmd__, kwargs=kwargs)
+
+    @staticmethod
+    def _parser(stdout: str) -> dict:
+        device = ''
+        temp = []
+        for row in stdout.split('\n'):
+            temp.append(anti_spacer.sub(' ', row).split(':', maxsplit=1))
+
+        d = { }
+        for row in temp:
+            if row == ['']: continue
+            key, value = row
+            if "GENERAL.DEVICE" in key:
+                device = value.strip()
+                d[device] = {}
+            d[device][key.strip()] = value.strip()
+        return d
+
+    _show_parser = Parser(action=_parser)
+    def __call__(self) -> Result:
+        """
+        nmcli device show
+            GENERAL.DEVICE:                         eth0
+            GENERAL.TYPE:                           ethernet
+            GENERAL.HWADDR:                         00:00:00:00:00:00
+            GENERAL.MTU:                            1500
+            GENERAL.STATE:                          100 (connected)
+            GENERAL.CONNECTION:                     Wired connection 1
+            GENERAL.CON-PATH:                       /org/freedesktop/NetworkManager/ActiveConnection/3
+            WIRED-PROPERTIES.CARRIER:               on
+            IP4.ADDRESS[1]:                         192.168.1.219/24
+            IP4.GATEWAY:                            192.168.1.1
+            IP4.ROUTE[1]:                           dst = 0.0.0.0/0, nh = 192.168.1.1, mt = 100
+            IP4.ROUTE[2]:                           dst = 192.168.1.0/24, nh = 0.0.0.0, mt = 100
+            IP4.DNS[1]:                             1.1.1.1
+            IP4.DNS[2]:                             192.168.1.1
+            IP6.ADDRESS[1]:                         fe80::680:d91:e7db:4635/64
+            IP6.GATEWAY:                            --
+            IP6.ROUTE[1]:                           dst = fe80::/64, nh = ::, mt = 100
+            IP6.ROUTE[2]:                           dst = ff00::/8, nh = ::, mt = 256, table=255
+
+            GENERAL.DEVICE:                         wlan0
+            GENERAL.TYPE:                           wifi
+            GENERAL.HWADDR:                         00:00:00:00:00:00
+            GENERAL.MTU:                            1500
+            GENERAL.STATE:                          100 (connected)
+            GENERAL.CONNECTION:                     Steggi
+            GENERAL.CON-PATH:                       /org/freedesktop/NetworkManager/ActiveConnection/4
+            IP4.ADDRESS[1]:                         192.168.1.157/24
+            IP4.GATEWAY:                            192.168.1.1
+            IP4.ROUTE[1]:                           dst = 0.0.0.0/0, nh = 192.168.1.1, mt = 600
+            IP4.ROUTE[2]:                           dst = 192.168.1.0/24, nh = 0.0.0.0, mt = 600
+            IP4.DNS[1]:                             1.1.1.1
+            IP4.DNS[2]:                             192.168.1.1
+            IP6.ADDRESS[1]:                         fe80::6e39:a7d1:bf1b:9f8a/64
+            IP6.GATEWAY:                            --
+            IP6.ROUTE[1]:                           dst = fe80::/64, nh = ::, mt = 600
+            IP6.ROUTE[2]:                           dst = ff00::/8, nh = ::, mt = 256, table=255
+
+            GENERAL.DEVICE:                         lo
+            GENERAL.TYPE:                           loopback
+            GENERAL.HWADDR:                         00:00:00:00:00:00
+            GENERAL.MTU:                            65536
+            GENERAL.STATE:                          10 (unmanaged)
+            GENERAL.CONNECTION:                     --
+            GENERAL.CON-PATH:                       --
+            IP4.ADDRESS[1]:                         127.0.0.1/8
+            IP4.GATEWAY:                            --
+            IP6.ADDRESS[1]:                         ::1/128
+            IP6.GATEWAY:                            --
+            IP6.ROUTE[1]:                           dst = ::1/128, nh = ::, mt = 256
+
+        :param ifname: {
+                'eth0': {
+                        'GENERAL.DEVICE': 'eth0',
+                        'GENERAL.TYPE': 'ethernet',
+                        'GENERAL.HWADDR': '00:00:00:00:00:00',
+                        'GENERAL.MTU': '1500',
+                        'GENERAL.STATE': '100 (connected)',
+                        'GENERAL.CONNECTION': 'Wired connection 1',
+                        'GENERAL.CON-PATH': '/org/freedesktop/NetworkManager/ActiveConnection/3',
+                        'WIRED-PROPERTIES.CARRIER': 'on',
+                        'IP4.ADDRESS[1]': '192.168.1.219/24',
+                        'IP4.GATEWAY': '192.168.1.1',
+                        'IP4.ROUTE[1]': 'dst = 0.0.0.0/0, nh = 192.168.1.1, mt = 100',
+                        'IP4.ROUTE[2]': 'dst = 192.168.1.0/24, nh = 0.0.0.0, mt = 100',
+                        'IP4.DNS[1]': '1.1.1.1',
+                        'IP4.DNS[2]': '192.168.1.1',
+                        'IP6.ADDRESS[1]': 'fe80::680:d91:e7db:4635/64',
+                        'IP6.GATEWAY': '--',
+                        'IP6.ROUTE[1]': 'dst = fe80::/64, nh = ::, mt = 100',
+                        'IP6.ROUTE[2]': 'dst = ff00::/8, nh = ::, mt = 256, table=255'
+                        },
+                'wlan0': {
+                        'GENERAL.DEVICE': 'wlan0',
+                        'GENERAL.TYPE': 'wifi',
+                        'GENERAL.HWADDR': '00:00:00:00:00:00',
+                        'GENERAL.MTU': '1500',
+                        'GENERAL.STATE': '100 (connected)',
+                        'GENERAL.CONNECTION': 'Steggi',
+                        'GENERAL.CON-PATH': '/org/freedesktop/NetworkManager/ActiveConnection/4',
+                        'IP4.ADDRESS[1]': '192.168.1.157/24',
+                        'IP4.GATEWAY': '192.168.1.1',
+                        'IP4.ROUTE[1]': 'dst = 0.0.0.0/0, nh = 192.168.1.1, mt = 600',
+                        'IP4.ROUTE[2]': 'dst = 192.168.1.0/24, nh = 0.0.0.0, mt = 600',
+                        'IP4.DNS[1]': '1.1.1.1',
+                        'IP4.DNS[2]': '192.168.1.1',
+                        'IP6.ADDRESS[1]': 'fe80::6e39:a7d1:bf1b:9f8a/64',
+                        'IP6.GATEWAY': '--',
+                        'IP6.ROUTE[1]': 'dst = fe80::/64, nh = ::, mt = 600',
+                        'IP6.ROUTE[2]': 'dst = ff00::/8, nh = ::, mt = 256, table=255'
+                        },
+                'lo': {
+                        'GENERAL.DEVICE': 'lo',
+                        'GENERAL.TYPE': 'loopback',
+                        'GENERAL.HWADDR': '00:00:00:00:00:00',
+                        'GENERAL.MTU': '65536',
+                        'GENERAL.STATE': '10 (unmanaged)',
+                        'GENERAL.CONNECTION': '--',
+                        'GENERAL.CON-PATH': '--',
+                        'IP4.ADDRESS[1]': '127.0.0.1/8',
+                        'IP4.GATEWAY': '--',
+                        'IP6.ADDRESS[1]': '::1/128',
+                        'IP6.GATEWAY': '--',
+                        'IP6.ROUTE[1]': 'dst = ::1/128, nh = ::, mt = 256'
+                    }
+             }
+
+        :return:
+        """
+        return self._run_action(self.__base_command__, self.__cmd__, parser=self._show_parser)
 
 class _DevSetCommand(ROOT):
     """
@@ -40,18 +191,21 @@ class _DevSetCommand(ROOT):
            Set device properties.
     """
     __cmd__ = 'set'
+
     class sub_cmd(object):
         autoconnect = 'autoconnect'
         managed = 'managed'
-        ifname = 'ifname'
         yes = 'yes'
         no = 'no'
-    def __call__(self, ifname: str = None, managed: bool = None, auto_connect: bool = None) -> Result:
-        kwargs = {}
+
+    def __call__(self, ifname: str, *, managed: bool = None, auto_connect: bool = None) -> Result:
+        kwargs = { }
         if ifname is not None: kwargs[self.sub_cmd.ifname] = self.sub_cmd.yes if ifname else self.sub_cmd.no
         if managed is not None: kwargs[self.sub_cmd.managed] = self.sub_cmd.yes if managed else self.sub_cmd.no
         if auto_connect is not None: kwargs[self.sub_cmd.autoconnect] = self.sub_cmd.yes if auto_connect else self.sub_cmd.no
         return self._run_action(self.__base_command__, self.__cmd__, kwargs=kwargs)
+
+
 
 class _DevConnectCommand(ROOT):
     """
@@ -61,13 +215,31 @@ class _DevConnectCommand(ROOT):
            If --wait option is not specified, the default timeout will be 90 seconds.
     """
     __cmd__ = 'connect'
-    class sub_cmd(object):
-        wait = '--wait'
-        ifname = 'ifname'
-    def __call__(self, ifname: str = None, wait: int = None) -> Result:
-        kwargs = {self.sub_cmd.ifname: ifname}
-        if wait: kwargs[self.sub_cmd.wait] = wait
-        return self._run_action(self.__base_command__, self.__cmd__, kwargs=kwargs)
+
+    @staticmethod
+    def _parser(stdout: str) -> dict:
+        device = ''
+        temp = []
+        for row in stdout.split('\n'):
+            temp.append(anti_spacer.sub(' ', row).split(':', maxsplit=1))
+
+        d = { }
+        for row in temp:
+            if row == ['']: continue
+            key, value = row
+            if "GENERAL.DEVICE" in key:
+                device = value.strip()
+                d[device] = {}
+            d[device][key.strip()] = value.strip()
+        return d
+
+    _connect_parser = Parser(action=_parser)
+    def __call__(self, if_name: str, wait: bool) -> Result:
+        args = [if_name]
+        if wait: args.append('--wait')
+        return self._run_action(self.__base_command__, self.__cmd__, *args)
+
+
 
 class _DevReapplyCommand(ROOT):
     """
@@ -75,10 +247,16 @@ class _DevReapplyCommand(ROOT):
            Attempt to update device with changes to the currently active connection made since it was last applied.
     """
     __cmd__ = 'reapply'
+
+
+
     class sub_cmd(object):
         ifname = 'ifname'
+
+
+
     def __call__(self, ifname: str = None) -> Result:
-        kwargs = {self.sub_cmd.ifname: ifname}
+        kwargs = { self.sub_cmd.ifname: ifname }
         return self._run_action(self.__base_command__, self.__cmd__, kwargs=kwargs)
 
 class _DevModifyCommand(ROOT):
@@ -93,9 +271,15 @@ class _DevModifyCommand(ROOT):
            You can also use the aliases described in PROPERTY ALIASES section. The syntax is the same as of the nmcli connection modify command.
     """
     __cmd__ = 'modify'
+
+
+
     class sub_cmd(object):
         wait = '--wait'
         ifname = 'ifname'
+
+
+
     def __call__(self, ifname: str = None, *args, **kwargs) -> Result:
         raise NotImplementedError()
 
@@ -107,11 +291,17 @@ class _DevDisconnectCommand(ROOT):
            If --wait option is not specified, the default timeout will be 10 seconds.
     """
     __cmd__ = 'disconnect'
+
+
+
     class sub_cmd(object):
         wait = '--wait'
         ifname = 'ifname'
+
+
+
     def __call__(self, ifname: str = None, wait: int = None) -> Result:
-        kwargs = {self.sub_cmd.ifname: ifname}
+        kwargs = { self.sub_cmd.ifname: ifname }
         if wait: kwargs[self.sub_cmd.wait] = wait
         return self._run_action(self.__base_command__, self.__cmd__, kwargs=kwargs)
 
@@ -123,11 +313,17 @@ class _DevDeleteCommand(ROOT):
            If --wait option is not specified, the default timeout will be 10 seconds.
     """
     __cmd__ = 'delete'
+
+
+
     class sub_cmd(object):
         wait = '--wait'
         ifname = 'ifname'
+
+
+
     def __call__(self, ifname: str = None, wait: int = None) -> Result:
-        kwargs = {self.sub_cmd.ifname: ifname}
+        kwargs = { self.sub_cmd.ifname: ifname }
         if wait: kwargs[self.sub_cmd.wait] = wait
         return self._run_action(self.__base_command__, self.__cmd__, kwargs=kwargs)
 
@@ -139,14 +335,20 @@ class _Dev_lldp_Command(ROOT):
            The protocol must be enabled in the connection settings.
     """
     __cmd__ = 'lldp'
+
+
+
     class sub_cmd(object):
         list = 'list'
         ifname = 'ifname'
+
+
+
     def __call__(self, get_list: bool = None, if_name: str = None) -> Result:
         if get_list:
-            return self._run_action(self.__base_command__, self.__cmd__, self.sub_cmd.list, kwargs={ self.sub_cmd.ifname: if_name } )
+            return self._run_action(self.__base_command__, self.__cmd__, self.sub_cmd.list, kwargs={ self.sub_cmd.ifname: if_name })
         else:
-            return self._run_action(self.__base_command__, self.__cmd__ )
+            return self._run_action(self.__base_command__, self.__cmd__)
 
 class _DevMonitorCommand(ROOT):
     """
@@ -156,12 +358,16 @@ class _DevMonitorCommand(ROOT):
            Monitors all devices in case no interface is specified. The monitor terminates when all specified devices disappear. If you want to monitor device addition consider using the global monitor with nmcli monitor command.
     """
     __cmd__ = 'monitor'
+
+
+
     class sub_cmd(object):
         ifname = 'ifname'
+
+
+
     def __call__(self, if_name: str = None) -> Result:
-        return self._run_action(self.__base_command__, self.__cmd__, kwargs={ self.sub_cmd.ifname: if_name } )
-
-
+        return self._run_action(self.__base_command__, self.__cmd__, kwargs={ self.sub_cmd.ifname: if_name })
 
 class WiFi_DevConnectCommand(ROOT):
     """
@@ -200,6 +406,9 @@ class WiFi_DevConnectCommand(ROOT):
                set to yes when connecting for the first time to an AP not broadcasting its SSID. Otherwise the SSID would not be found and the connection attempt would fail.
     """
     __cmd__ = 'connect'
+
+
+
     class sub_cmd(object):
         yes = 'yes'
         no = 'no'
@@ -212,10 +421,13 @@ class WiFi_DevConnectCommand(ROOT):
         private = 'private'
         hidden = 'hidden'
         wep_key_type = 'wep-key-type'
+
+
+
     def __call__(self, if_name: str = None, password: str = None, wep_key_type: str = None, ssid: str = None, bssid: str = None, name: str = None,
                  private: bool = None, hidden: bool = None, wait: int = None) -> Result:
         args = []
-        kwargs = {}
+        kwargs = { }
         if if_name is not None: kwargs[self.sub_cmd.ifname] = if_name
         if ssid is not None: kwargs[self.sub_cmd.ssid] = ssid
         if password is not None: kwargs[self.sub_cmd.password] = password
@@ -255,6 +467,9 @@ class WiFi_DevHotSpotCommand(ROOT):
                Note that --show-secrets global option can be used to print the hotspot password. It is useful especially when the password was generated.
     """
     __cmd__ = 'hotspot'
+
+
+
     class sub_cmd(object):
         ifname = 'ifname'
         ssid = 'ssid'
@@ -263,6 +478,9 @@ class WiFi_DevHotSpotCommand(ROOT):
         con_name = 'con-name'
         band = 'band'
         channel = 'channel'
+
+
+
     def __call__(self, if_name: str = None, con_name: str = None, ssid: str = None, band: str = None, channel: str = None, password: str = None) -> Result:
         """
             show [--active] [id | uuid | path | apath] ID...
@@ -306,7 +524,7 @@ class WiFi_DevHotSpotCommand(ROOT):
         :return:
         """
         args = []
-        kwargs = {}
+        kwargs = { }
         if if_name is not None: kwargs[self.sub_cmd.ifname] = if_name
         if ssid is not None: kwargs[self.sub_cmd.ssid] = ssid
         if band is not None: kwargs[self.sub_cmd.band] = band
@@ -325,9 +543,15 @@ class WiFi_DevRescanCommand(ROOT):
            This command does not show the APs, use nmcli device wifi list for that.
     """
     __cmd__ = 'rescan'
+
+
+
     class sub_cmd(object):
         ifname = 'ifname'
         ssid = 'ssid'
+
+
+
     def __call__(self, if_name: str = None, ssid: str = None) -> Result:
         """
             show [--active] [id | uuid | path | apath] ID...
@@ -370,7 +594,7 @@ class WiFi_DevRescanCommand(ROOT):
         :param active:
         :return:
         """
-        kwargs = {}
+        kwargs = { }
         if if_name is not None: kwargs[self.sub_cmd.ifname] = if_name
         if ssid is not None: kwargs[self.sub_cmd.ssid] = ssid
         return self._run_action(self.__base_command__, self.__cmd__, kwargs=kwargs)
@@ -384,8 +608,6 @@ class WiFiCommands(ROOT):
     hot_spot = WiFi_DevHotSpotCommand(__base_command__)
     connect = WiFi_DevConnectCommand(__base_command__)
 
-
-
 class DeviceManager(object):
     """
     DEVICE MANAGEMENT COMMANDS
@@ -395,7 +617,6 @@ class DeviceManager(object):
     """
     __base_command__ = 'device'
     def __init__(self):
-
         self.wifi = WiFiCommands(base=self.__base_command__)
         self.monitor = _DevModifyCommand(base=self.__base_command__)
         self.delete = _DevDeleteCommand(base=self.__base_command__)
@@ -410,4 +631,3 @@ class DeviceManager(object):
 
     def __call__(self):
         return self.status()
-

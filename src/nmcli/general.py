@@ -1,9 +1,11 @@
 
-from .base import ROOT
+from .standard_parsers import *
+from .base import *
 from .results import Result
 
 
 ___all__ = ['GeneralCommand']
+
 
 
 
@@ -14,8 +16,17 @@ class _GeneralStatusCommand(ROOT):
            Show overall status of NetworkManager. This is the default action, when no additional command is provided for nmcli general.
     """
     __cmd__ = 'status'
+    _status_parser = Parser(action=header_single_row_parser)
+
     def __call__(self) -> Result:
-        return self._run_action(self.__base_command__, self.__cmd__)
+        """
+        nmcli general
+            STATE      CONNECTIVITY  WIFI-HW  WIFI     WWAN-HW  WWAN
+            connected  full          enabled  enabled  enabled  enabled
+
+        :return:
+        """
+        return self._run_action(self.__base_command__, self.__cmd__, parser=self._status_parser)
 
 class _GeneralHostNameCommand(ROOT):
     """
@@ -28,8 +39,16 @@ class _GeneralHostNameCommand(ROOT):
            For example, systemd-hostnamed service uses the term "static" hostname and it only reads the /etc/hostname file when it starts.
     """
     __cmd__ = 'hostname'
-    def __call__(self, host_name: str) -> Result:
-        return self._run_action(self.__base_command__, self.__cmd__, host_name)
+    _hostname_parser = Parser(action=single_parser)
+
+    def __call__(self) -> Result:
+        """
+            nmcli general hostname
+                hostname
+
+        :return:
+        """
+        return self._run_action(self.__base_command__, self.__cmd__, parser=self._hostname_parser)
 
 class _GeneralPermissionsCommand(ROOT):
     """
@@ -38,7 +57,32 @@ class _GeneralPermissionsCommand(ROOT):
            like enable and disable networking, changing Wi-Fi and WWAN state, modifying connections, etc.
     """
     __cmd__ = 'permissions'
+
+    # _parse(s)
+    _status_parser = Parser(action=row_parser, column_names=['PERMISSION', 'VALUE'])
+
     def __call__(self) -> Result:
+        """
+            PERMISSION                                                        VALUE
+            org.freedesktop.NetworkManager.enable-disable-network             no
+            org.freedesktop.NetworkManager.enable-disable-wifi                no
+            org.freedesktop.NetworkManager.enable-disable-wwan                no
+            org.freedesktop.NetworkManager.enable-disable-wimax               no
+            org.freedesktop.NetworkManager.sleep-wake                         no
+            org.freedesktop.NetworkManager.network-control                    auth
+            org.freedesktop.NetworkManager.wifi.share.protected               no
+            org.freedesktop.NetworkManager.wifi.share.open                    no
+            org.freedesktop.NetworkManager.settings.modify.system             no
+            org.freedesktop.NetworkManager.settings.modify.own                auth
+            org.freedesktop.NetworkManager.settings.modify.hostname           auth
+            org.freedesktop.NetworkManager.settings.modify.global-dns         auth
+            org.freedesktop.NetworkManager.reload                             auth
+            org.freedesktop.NetworkManager.checkpoint-rollback                auth
+            org.freedesktop.NetworkManager.enable-disable-statistics          no
+            org.freedesktop.NetworkManager.enable-disable-connectivity-check  no
+
+        :return:
+        """
         return self._run_action(self.__base_command__, self.__cmd__)
 
 class _GeneralLoggingCommand(ROOT):
@@ -52,11 +96,25 @@ class _GeneralLoggingCommand(ROOT):
            TODO: finish implementation
     """
     __cmd__ = 'logging'
-    class sub_cmd(object):
-        level = 'level'
-        domains = 'domains'
-    def __call__(self, level, domains) -> Result:
-        return self._run_action(self.__base_command__, self.__cmd__, kwargs={ self.sub_cmd.level: level, self.sub_cmd.domains: domains} )
+
+    @staticmethod
+    def _parser(stdout: str) -> dict:
+        l = stdout.strip().split('\n')[1].split()
+        return {
+                'LEVEL':  l[0].strip(),
+                'DOMAINS':  l[1].split(',')
+                }
+    _logging_parser = Parser(action=_parser)
+    def __call__(self) -> Result:
+        """
+            nmcli general logging
+                LEVEL  DOMAINS
+                INFO   PLATFORM,RFKILL,ETHER,WIFI,BT,MB,DHCP4,DHCP6,PPP,IP4,IP6,AUTOIP4,DNS,VPN,SHARING,SUPPLICANT,AGENTS,SETTINGS,SUSPEND,CORE,DEVICE,OLPC,INFINIBAND,FIREWALL,ADSL,BOND,VLAN,BRIDGE,TEAM,CONCHECK,DCB,DISPATCH,AUDIT,SYSTEMD,PROXY
+        :param level:
+        :param domains:
+        :return:
+        """
+        return self._run_action(self.__base_command__, self.__cmd__, parser=self._logging_parser )
 
 class GeneralCommand(object):
     """
@@ -73,6 +131,12 @@ class GeneralCommand(object):
         self.logging = _GeneralLoggingCommand(base=self.__base_command__)
 
     def __call__(self) -> Result:
-        return self.status()
+        """
+        nmcli general
+            STATE      CONNECTIVITY  WIFI-HW  WIFI     WWAN-HW  WWAN
+            connected  full          enabled  enabled  enabled  enabled
+        :return:
+        """
+        return self.status()  # default command from man nmcli general
 
 

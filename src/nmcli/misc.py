@@ -44,8 +44,7 @@ class RTC_WiFi_Command(ROOT):
     def off(self) -> Result:
         return self._run_action(self.__base_command__, self.__cmd__, self.sub_cmd.off)
 
-    def __call__(self, *args, **kwargs) -> Result:
-        return self._run_action(self.__base_command__, self.__cmd__, *args, **kwargs)
+
 
 class RTC_WWan_Command(ROOT):
     """
@@ -63,8 +62,7 @@ class RTC_WWan_Command(ROOT):
     def off(self) -> Result:
         return self._run_action(self.__base_command__, self.__cmd__, self.sub_cmd.off)
 
-    def __call__(self, *args, **kwargs) -> Result:
-        return self._run_action(self.__base_command__, self.__cmd__, *args, **kwargs)
+
 
 class RTC_All_Command(ROOT):
     """
@@ -81,8 +79,7 @@ class RTC_All_Command(ROOT):
     def off(self) -> Result:
         return self._run_action(self.__base_command__, self.__cmd__, self.sub_cmd.off)
 
-    def __call__(self, *args, **kwargs) -> Result:
-        return self._run_action(self.__base_command__, self.__cmd__, *args, **kwargs)
+
 
 class RadioTransmissionControlCommand(object):
     """
